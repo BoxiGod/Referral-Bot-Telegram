@@ -1,23 +1,42 @@
-import telebot
 import mysql.connector
 from datetime import datetime
 import bot_consts as const
+import telebot
+import cherrypy
+
+bot = telebot.TeleBot('')
+
+kbrd_final = telebot.types.ReplyKeyboardMarkup(True, True)
+kbrd_start = telebot.types.InlineKeyboardMarkup()
+kbrd_sub = telebot.types.InlineKeyboardMarkup()
+
+key_start = telebot.types.InlineKeyboardButton(text='Принять участие', callback_data='start_reg')
+key_subscribe1 = telebot.types.InlineKeyboardButton(text='Перейти к @interaliex', url="t.me/interaliex")
+key_subscribe2 = telebot.types.InlineKeyboardButton(text='Перейти к @hotcoupons', url="t.me/hotcoupons")
+key_subscribe3 = telebot.types.InlineKeyboardButton(text='Перейти к @daysale', url="t.me/daysale")
+key_check = telebot.types.InlineKeyboardButton(text='Проверить', callback_data="check_sub")
+
+kbrd_final.row('Друзья', 'До окончания', 'Информация')
+kbrd_start.add(key_start)
+kbrd_sub.add(key_subscribe1, key_subscribe2)
+kbrd_sub.add(key_subscribe3)
+kbrd_sub.add(key_check)
 
 mydb = mysql.connector.connect(
     host="localhost",
     user="",
     password="",
-    # database='SalesContestUsers'
+    auth_plugin='mysql_native_password',
+   #database='SalesContestUsers'
 )
+
 
 mycursor = mydb.cursor()
 
-try:
-    mycursor.execute("CREATE DATABASE SalesContestUsers")
-    mycursor.execute("CREATE TABLE Users (id INT PRIMARY KEY, subs_done BIT, referrer INT)")
-    mydb.commit()
-except mysql.connector.errors.DatabaseError or mysql.connector.errors.ProgrammingError:
-    pass
+
+mycursor.execute("CREATE DATABASE IF NOT EXISTS SalesContestUsers")
+mycursor.execute("CREATE TABLE IF NOT EXISTS Users (id INT PRIMARY KEY, subs_done BIT, referrer INT)")
+mydb.commit()
 
 
 def update_col(user_id, col, new_val):
@@ -58,27 +77,10 @@ def insert_user(id, referrer, subs_done):
     mycursor.execute(sql, val)
     mydb.commit()
 
-bot = telebot.TeleBot('')
-
-kbrd_final = telebot.types.ReplyKeyboardMarkup(True, True)
-kbrd_start = telebot.types.InlineKeyboardMarkup()
-kbrd_sub = telebot.types.InlineKeyboardMarkup()
-
-key_start = telebot.types.InlineKeyboardButton(text='Принять участие', callback_data='start_reg')
-key_subscribe1 = telebot.types.InlineKeyboardButton(text='Перейти к @interaliex', url="t.me/interaliex")
-key_subscribe2 = telebot.types.InlineKeyboardButton(text='Перейти к @hotcoupons', url="t.me/hotcoupons")
-key_subscribe3 = telebot.types.InlineKeyboardButton(text='Перейти к @daysale', url="t.me/daysale")
-key_check = telebot.types.InlineKeyboardButton(text='Проверить', callback_data="check_sub")
-
-kbrd_final.row('Друзья', 'До окончания', 'Информация')
-kbrd_start.add(key_start)
-kbrd_sub.add(key_subscribe1, key_subscribe2)
-kbrd_sub.add(key_subscribe3)
-kbrd_sub.add(key_check)
-
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
+    bot.reply_to(message, message.text)
     if not get_col(message.chat.id, 'id'):
         insert_user(message.chat.id, 0, 0)
         args = telebot.util.extract_arguments(message.text)  # get args when /start
@@ -143,7 +145,8 @@ def start(message):
                          "\n\n🙋‍♂️Количество друзей,"
                          " завершивших регистрацию: "
                          + str(get_amount_of_refs(message.chat.id, 1))
-                         + const.REF_LINK + str(message.chat.id), reply_markup=kbrd_final, disable_web_page_preview=True)
+                         + const.REF_LINK + str(message.chat.id), reply_markup=kbrd_final,
+                         disable_web_page_preview=True)
     elif message.text.lower() == "до окончания" and get_col(message.chat.id, 'id'):
         end_time = datetime(2019, 10, 31)
         till_end = end_time - datetime.now()
@@ -158,4 +161,44 @@ def start(message):
             bot.send_message(message.chat.id, const.PARTICIPATE, reply_markup=kbrd_final)
 
 
-bot.polling()
+WEBHOOK_HOST = ''
+WEBHOOK_PORT = 443
+WEBHOOK_LISTEN = '0.0.0.0'  
+
+WEBHOOK_SSL_CERT = './webhook_cert.pem' 
+WEBHOOK_SSL_PRIV = './webhook_pkey.pem'
+
+WEBHOOK_URL_BASE = "https://%s:%s" % (WEBHOOK_HOST, WEBHOOK_PORT)
+WEBHOOK_URL_PATH = "/%s/" % ('')
+
+
+class WebhookServer(object):
+    @cherrypy.expose
+    def index(self):
+        if 'content-length' in cherrypy.request.headers and \
+                        'content-type' in cherrypy.request.headers and \
+                        cherrypy.request.headers['content-type'] == 'application/json':
+            length = int(cherrypy.request.headers['content-length'])
+            json_string = cherrypy.request.body.read(length).decode("utf-8")
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return ''
+        else:
+            raise cherrypy.HTTPError(403)
+
+
+bot.remove_webhook()
+
+bot.set_webhook(url=WEBHOOK_URL_BASE + WEBHOOK_URL_PATH,
+                certificate=open(WEBHOOK_SSL_CERT, 'r'))
+
+cherrypy.config.update({
+    'server.socket_host': WEBHOOK_LISTEN,
+    'server.socket_port': WEBHOOK_PORT,
+    'server.ssl_module': 'builtin',
+    'server.ssl_certificate': WEBHOOK_SSL_CERT,
+    'server.ssl_private_key': WEBHOOK_SSL_PRIV
+})
+
+
+cherrypy.quickstart(WebhookServer(), WEBHOOK_URL_PATH, {'/': {}})
