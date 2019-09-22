@@ -29,40 +29,39 @@ mydb = mysql.connector.connect(
     auth_plugin='mysql_native_password',
    #database='SalesContestUsers'
 )
-
-
-mycursor = mydb.cursor()
-
-
-mycursor.execute("CREATE DATABASE IF NOT EXISTS SalesContestUsers")
-mycursor.execute("CREATE TABLE IF NOT EXISTS Users (id INT PRIMARY KEY, subs_done BIT, referrer INT)")
-mydb.commit()
+with mydb as cursor:
+    cursor.execute("CREATE DATABASE IF NOT EXISTS SalesContestUsers")
+    cursor.execute("CREATE TABLE IF NOT EXISTS Users (id INT PRIMARY KEY, subs_done BIT, referrer INT)")
+    mydb.commit()
 
 
 def update_col(user_id, col, new_val):
-    sql = "UPDATE Users SET " + str(col) + "= " + str(new_val) + " WHERE id=" + str(user_id)
-    mycursor.execute(sql)
-    return mydb.commit()
+    with mydb as cursor:
+        sql = "UPDATE Users SET " + str(col) + "= " + str(new_val) + " WHERE id=" + str(user_id)
+        cursor.execute(sql)
+        mydb.commit()
 
 
 def get_col(user_id, column):
-    sql = "SELECT " + str(column) + " FROM Users WHERE id = '" + str(user_id) + "'"
-    mycursor.execute(sql)
-    myresult = mycursor.fetchall()
-    try:
-        return myresult[0][0]
-    except IndexError:
-        return myresult
+    with mydb as cursor:
+        sql = "SELECT " + str(column) + " FROM Users WHERE id = '" + str(user_id) + "'"
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        try:
+            return result[0][0]
+        except IndexError:
+            return result
 
 
 def get_amount_of_refs(user_id, subs_done):
-    if subs_done == 1:
-        sql = "SELECT * FROM Users WHERE referrer = '" + str(user_id) + "'" " and subs_done = " + str(subs_done)
-    else:
-        sql = "SELECT * FROM Users WHERE referrer = '" + str(user_id) + "'"
-    mycursor.execute(sql)
-    myresult = mycursor.fetchall()
-    return len(myresult)
+    with mydb as cursor:
+        if subs_done == 1:
+            sql = "SELECT * FROM Users WHERE referrer = '" + str(user_id) + "'" " and subs_done = " + str(subs_done)
+        else:
+            sql = "SELECT * FROM Users WHERE referrer = '" + str(user_id) + "'"
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        return len(result)
 
 
 def check_sub(channel, user_id):
@@ -71,11 +70,12 @@ def check_sub(channel, user_id):
     return True
 
 
-def insert_user(id, referrer, subs_done):
-    sql = "INSERT INTO Users (id, subs_done, referrer) VALUES (%s, %s, %s)"
-    val = (str(id), referrer, subs_done)
-    mycursor.execute(sql, val)
-    mydb.commit()
+def insert_user(tg_id, referrer, subs_done):
+    with mydb as cursor:
+        sql = "INSERT INTO Users (id, subs_done, referrer) VALUES (%s, %s, %s)"
+        val = (str(tg_id), referrer, subs_done)
+        cursor.execute(sql, val)
+        mydb.commit()
 
 
 @bot.message_handler(commands=['start'])
