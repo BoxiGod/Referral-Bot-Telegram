@@ -3,20 +3,7 @@ from datetime import datetime
 import bot_consts as const
 import telebot
 import cherrypy
-
-
-def __enter__(self):
-    if self.get_autocommit():
-        self.query("BEGIN")
-    return self.cursor()
-
-def __exit__(self, exc, value, tb):
-    if exc:
-        self.rollback()
-    else:
-        self.commit()
-
-        
+   
 bot = telebot.TeleBot('')
 
 kbrd_final = telebot.types.ReplyKeyboardMarkup(True, True)
